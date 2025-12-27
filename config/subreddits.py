@@ -1,82 +1,90 @@
 """
 config/subreddits.py
 
-Subreddit lists for coarse filtering and labeling.
+High-recall subreddit filtering for lifestyle detection.
 """
 
-# ----------------------------------------------
-# SUBREDDIT WHITELIST (Highly relevant)
-# ----------------------------------------------
+# =========================================================
+# 1. ALWAYS INCLUDE (personal, health, support-heavy)
+# =========================================================
 
-WHITELIST_SUBREDDITS = {
+SEED_WHITELIST = {
+    # Emotional disclosure / advice
+    "offmychest", "trueoffmychest", "confession",
+    "advice", "needadvice", "relationship_advice",
+    "twoXchromosomes", "twoxchromosomes",
+    "self", "assistance",
+
+    # Mental health
+    "mentalhealth", "anxiety", "depression", "ptsd",
+    "bipolar", "bipolarreddit", "ocd",
+    "suicidewatch", "selfharm",
+
     # Sleep
-    "insomnia",
-    "sleep",
-    "sleepapnea",
+    "insomnia", "sleep", "sleepapnea",
 
-    # Diet & weight loss
-    "loseit",
-    "nutrition",
-    "intermittentfasting",
-    "keto",
-    "xxketo",
+    # Diet & fitness
+    "fitness", "xxfitness", "loseit", "running",
+    "gym", "exercise", "bodyweightfitness",
+    "nutrition", "diet", "healthyfood", "supplements",
 
-    # Stress & mental health
-    "anxiety",
-    "socialanxiety",
-    "depression",
-    "offmychest",
+    # Substance use
+    "stopsmoking", "stopdrinking", "alcoholism",
+    "leaves", "addiction",
 
-    # Exercise
-    "fitness",
-    "running",
-    "bodyweightfitness",
+    # Medical / neuro
+    "medical", "askdocs", "medicine",
+    "neurology", "braininjury", "stroke",
+    "chronicpain", "disability",
 
-    # Addiction
-    "stopdrinking",
-    "stopgaming",
-    "leaves",
-    "addiction",
-
-    # Cognition / neuro
-    "adhd",
-    "adhdwomen",
-    "migraine",
+    # Nature
+    "hiking", "camping", "backpacking", "outdoors",
 
     # Social
-    "lonely",
-    "relationship_advice",
-
-    # Nature / purpose
-    "hiking",
-    "camping",
+    "lonely", "relationships",
 }
 
-# ----------------------------------------------
-# SUBREDDIT GRAYLIST (Mixed content)
-# ----------------------------------------------
+# =========================================================
+# 2. GRAYLIST (keep only if text matches keywords)
+# =========================================================
 
 GRAYLIST_SUBREDDITS = {
-    "askreddit",
-    "askwomen",
-    "askmen",
+    "askreddit", "askwomen", "askmen",
     "casualconversation",
     "amitheasshole",
-    "confession",
-    "trueoffmychest",
+    "rant", "vent",
+    "health", "mental",
 }
 
-# ----------------------------------------------
-# SUBREDDIT BLACKLIST (Irrelevant content)
-# ----------------------------------------------
+# =========================================================
+# 3. ALWAYS EXCLUDE (high-noise domains)
+# =========================================================
 
 BLACKLIST_SUBREDDITS = {
-    "gaming",
-    "leagueoflegends",
-    "dota2",
-    "anime",
-    "memes",
-    "politics",
-    "worldnews",
-    "news",
+    # Gaming
+    "gaming", "leagueoflegends", "dota2", "csgo",
+    "minecraft", "overwatch", "valorant",
+
+    # Memes / jokes
+    "memes", "dankmemes", "shitposting",
+    "me_irl", "circlejerk", "funny",
+
+    # Politics / news
+    "politics", "worldnews", "news",
+    "liberal", "conservative",
+
+    # Finance / crypto
+    "bitcoin", "crypto", "stocks",
+    "wallstreetbets", "investing",
+
+    # Porn / NSFW
+    "nsfw", "porn", "gonewild",
+
+    # Tech
+    "programming", "learnpython",
+    "linux", "pcmasterrace",
+
+    # Media fandoms
+    "anime", "manga", "kpop",
+    "movies", "television", "music",
 }

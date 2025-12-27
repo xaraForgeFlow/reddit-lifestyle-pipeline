@@ -1,58 +1,97 @@
 """
 04_fit_label_model.py
---------------------
+---------------------
 
-Combines LF outputs + NLI scores
-and generates pillar probabilities.
+Fits per-pillar label models using weak supervision.
+Takes LF matrix as input and outputs probabilistic labels.
 
-Later, replace with:
-- Snorkel LabelModel
-- real probabilistic aggregation
+Inputs:
+- lf_matrix.npy
+
+Outputs:
+- label_probabilities.json
 """
 
 import json
+import numpy as np
 from pathlib import Path
 
-from config.pillars import Pillar
+from snorkel.labeling import LabelModel
 
-def make_fake_probability(lf_outputs, nli_score):
+from config.pillars import Pillar, ABSTAIN
+
+
+# =========================================================
+# Load LF matrix
+# =========================================================
+
+def load_lf_matrix(path="lf_matrix.npy"):
+    return np.load(path)
+
+
+# =========================================================
+# Convert LF matrix to binary view for a pillar
+# =========================================================
+
+def make_binary_matrix(lf_matrix, pillar_value):
     """
-    Placeholder for real label model.
-    For now:
-    - If LF or NLI fires strongly → high probability
-    - Else → low probability
+    Converts multiclass LF matrix to binary:
+    1 = this pillar
+    0 = not this pillar
+    -1 = abstain
     """
-    if max(lf_outputs) == Pillar.SLEEP or nli_score > 0.7:
-        return {"sleep": 0.85, "stress": 0.2, "diet": 0.1}
-    return {"sleep": 0.1, "stress": 0.1, "diet": 0.1}
+    binary = np.full_like(lf_matrix, ABSTAIN)
+
+    binary[lf_matrix == pillar_value] = 1
+    binary[(lf_matrix != pillar_value) & (lf_matrix != ABSTAIN)] = 0
+
+    return binary
+
+
+# =========================================================
+# Fit label model for one pillar
+# =========================================================
+
+def fit_label_model(binary_matrix):
+    label_model = LabelModel(cardinality=2, verbose=False)
+    label_model.fit(
+        binary_matrix,
+        n_epochs=500,
+        lr=0.01,
+        log_freq=0,
+    )
+    return label_model
+
+
+# =========================================================
+# Main
+# =========================================================
 
 def main():
-    if not Path("lf_outputs.json").exists():
-        print("Run 02_run_lfs.py first.")
-        return
-    if not Path("nli_outputs.json").exists():
-        print("Run 03_run_nli_lfs.py first.")
-        return
+    print("Loading LF matrix...")
+    lf_matrix = load_lf_matrix()
 
-    with open("lf_outputs.json", "r", encoding="utf-8") as f:
-        lfs = json.load(f)
-    with open("nli_outputs.json", "r", encoding="utf-8") as f:
-        nlis = json.load(f)
+    results = {}
 
-    nli_map = {item["id"]: item["nli_sleep_score"] for item in nlis}
+    for pillar in Pillar:
+        if pillar == Pillar.NOT_LIFESTYLE:
+            continue
 
-    results = []
-    for item in lfs:
-        pid = item["id"]
-        nli_score = nli_map.get(pid, 0)
-        lf_outputs = item["lf_outputs"]
-        probs = make_fake_probability(lf_outputs, nli_score)
-        results.append({"id": pid, "probs": probs})
+        print(f"Fitting label model for {pillar.name}...")
 
-    with open("pillar_probs.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=4)
+        binary_matrix = make_binary_matrix(lf_matrix, int(pillar))
+        label_model = fit_label_model(binary_matrix)
 
-    print("Saved fake pillar probabilities.")
+        probs = label_model.predict_proba(binary_matrix)
+        results[pillar.name] = probs[:, 1].tolist()
+
+    output_path = Path("label_probabilities.json")
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2)
+
+    print("Done.")
+    print(f"Saved probabilities to {output_path.resolve()}")
+
 
 if __name__ == "__main__":
     main()

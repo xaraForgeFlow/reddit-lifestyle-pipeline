@@ -1,40 +1,115 @@
+"""
+02_run_lfs.py
+--------------
+
+Runs all labeling functions (LFs) over filtered Reddit posts
+and produces an LF label matrix.
+
+Inputs:
+- filtered_posts.json
+
+Outputs:
+- lf_outputs.json (readable)
+- lf_matrix.npy (numeric matrix)
+"""
+
 import json
+import importlib
+import inspect
 from pathlib import Path
 
-# Import all LFs
-from lfs.sleep import lf_sleep_insomnia, lf_sleep_schedule, lf_sleep_subreddit
-# Later: import diet, stress, social, etc.
+import numpy as np
 
-ALL_LFS = [
-    lf_sleep_insomnia,
-    lf_sleep_schedule,
-    lf_sleep_subreddit,
-]
+from config.pillars import ABSTAIN
 
-def run_lfs_on_post(post):
-    """Return list of LF outputs for one post."""
-    return [lf(post) for lf in ALL_LFS]
 
-def main():
-    if not Path("filtered_posts.json").exists():
-        print("Run 01_coarse_filter.py first.")
-        return
+# =========================================================
+# Load posts
+# =========================================================
 
-    with open("filtered_posts.json", "r", encoding="utf-8") as f:
-        posts = json.load(f)
+def load_posts(path="data/pilot_filtered_posts.json"):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-    results = []
-    for post in posts:
-        lf_output = run_lfs_on_post(post)
-        results.append({
-            "id": post["id"],
-            "lf_outputs": lf_output
+
+# =========================================================
+# Discover labeling functions
+# =========================================================
+
+def load_labeling_functions():
+    lf_dir = Path("lfs")
+    lf_functions = []
+
+    for lf_file in lf_dir.glob("*.py"):
+        module_name = f"lfs.{lf_file.stem}"
+        module = importlib.import_module(module_name)
+
+        for name, func in inspect.getmembers(module, inspect.isfunction):
+            if name.startswith("lf_"):
+                lf_functions.append(func)
+
+    return lf_functions
+
+
+# =========================================================
+# Run LFs
+# =========================================================
+
+def run_lfs(posts, lf_functions):
+    lf_outputs = []
+    matrix = np.full((len(posts), len(lf_functions)), ABSTAIN, dtype=int)
+
+    for i, post in enumerate(posts):
+        row = {}
+        for j, lf in enumerate(lf_functions):
+            try:
+                label = lf(post)
+            except Exception:
+                label = ABSTAIN
+
+            matrix[i, j] = int(label)
+            row[lf.__name__] = int(label)
+
+        lf_outputs.append({
+            "post_id": post.get("id"),
+            "labels": row
         })
 
-    with open("lf_outputs.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=4)
+    return lf_outputs, matrix
 
-    print(f"Processed {len(results)} posts with {len(ALL_LFS)} LFs.")
+
+# =========================================================
+# Save outputs
+# =========================================================
+
+def save_outputs(lf_outputs, matrix):
+    with open("lf_outputs.json", "w", encoding="utf-8") as f:
+        json.dump(lf_outputs, f, indent=2)
+
+    np.save("lf_matrix.npy", matrix)
+
+
+# =========================================================
+# Main
+# =========================================================
+
+def main():
+    print("Loading posts...")
+    posts = load_posts()
+
+    print("Discovering labeling functions...")
+    lf_functions = load_labeling_functions()
+    print(f"Found {len(lf_functions)} labeling functions.")
+
+    print("Running labeling functions...")
+    lf_outputs, matrix = run_lfs(posts, lf_functions)
+
+    print("Saving outputs...")
+    save_outputs(lf_outputs, matrix)
+
+    print("Done.")
+    print(f"LF matrix shape: {matrix.shape}")
+
 
 if __name__ == "__main__":
     main()
