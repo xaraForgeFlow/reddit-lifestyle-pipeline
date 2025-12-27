@@ -1,22 +1,20 @@
 import json
 import random
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Dict, Optional
 
 from datasets import load_dataset
 from tqdm import tqdm
 
 # ======================================================
-# RUNTIME CONFIG (pilot-scale only)
+# PILOT CONFIG
 # ======================================================
 
-PILOT_N_POSTS = 200000          
+PILOT_N_POSTS = 200_000      # safe on streaming
 RANDOM_SEED = 42
 
-# Choose ONE dataset and be explicit
-DATASET_NAME = "socialgrelp/one-million-reddit-questions"
-DATASET_SPLIT = "train"
-USE_STREAMING = True         
+DATASET_NAME = "fddemarco/pushshift-reddit"
+USE_STREAMING = True
 
 OUTPUT_PATH = Path("data/pilot_raw_posts.json")
 
@@ -25,7 +23,7 @@ OUTPUT_PATH = Path("data/pilot_raw_posts.json")
 
 def normalize_row(row: Dict) -> Optional[Dict]:
     """
-    Normalize a raw Reddit row into the canonical pipeline schema.
+    Normalize Pushshift Reddit submission into pipeline schema.
 
     Required downstream fields:
       - id
@@ -34,17 +32,17 @@ def normalize_row(row: Dict) -> Optional[Dict]:
       - created_utc
     """
 
-    # Handle different Reddit dataset conventions
-    text = row.get("text") or row.get("body")
-    if text is None:
+    # Pushshift uses 'selftext'
+    text = row.get("selftext")
+    if not text:
         return None
 
     text = text.strip()
-    if text == "":
+    if text in {"", "[deleted]", "[removed]"}:
         return None
 
     subreddit = row.get("subreddit")
-    if subreddit is None:
+    if not subreddit:
         return None
 
     return {
@@ -58,26 +56,34 @@ def normalize_row(row: Dict) -> Optional[Dict]:
 def main():
     random.seed(RANDOM_SEED)
 
-    # Ensure output directory exists
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 60)
-    print("Running script 00 — load pilot Reddit data")
-    print(f"Dataset      : {DATASET_NAME}")
-    print(f"Pilot size   : {PILOT_N_POSTS}")
-    print(f"Random seed  : {RANDOM_SEED}")
-    print("=" * 60)
+    print("=" * 70)
+    print("SCRIPT 00 — Load Pushshift Reddit Pilot")
+    print(f"Dataset     : {DATASET_NAME}")
+    print(f"Pilot size  : {PILOT_N_POSTS}")
+    print(f"Streaming   : {USE_STREAMING}")
+    print(f"Seed        : {RANDOM_SEED}")
+    print("=" * 70)
 
-    dataset = load_dataset(
-        DATASET_NAME,
-        split=DATASET_SPLIT,
-        streaming=USE_STREAMING,
-    )
+    try:
+        dataset = load_dataset(
+            DATASET_NAME,
+            streaming=USE_STREAMING,
+        )
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to load dataset '{DATASET_NAME}'. "
+            f"Check dataset name or network access."
+        ) from e
 
     posts = []
     skipped = 0
 
-    for row in tqdm(dataset, desc="Collecting pilot posts"):
+    # Pushshift dataset exposes a single iterable split
+    split = next(iter(dataset.values()))
+
+    for row in tqdm(split, desc="Collecting pilot posts"):
         norm = normalize_row(row)
         if norm is None:
             skipped += 1
@@ -89,25 +95,25 @@ def main():
             break
 
     # -----------------------
-    # Hard safety checks
+    # HARD SAFETY CHECKS
     # -----------------------
 
     assert len(posts) > 0, "❌ No valid posts collected"
-    assert all("text" in p for p in posts), "❌ Missing text field"
-    assert all("subreddit" in p for p in posts), "❌ Missing subreddit field"
+    assert all("text" in p for p in posts)
+    assert all("subreddit" in p for p in posts)
 
     # -----------------------
-    # Save output
+    # SAVE OUTPUT
     # -----------------------
 
     with OUTPUT_PATH.open("w", encoding="utf-8") as f:
         json.dump(posts, f, ensure_ascii=False, indent=2)
 
-    print("=" * 60)
+    print("=" * 70)
     print(f"✅ Saved {len(posts)} pilot posts")
     print(f"⏭️  Skipped {skipped} invalid rows")
     print(f"📁 Output → {OUTPUT_PATH.resolve()}")
-    print("=" * 60)
+    print("=" * 70)
 
 
 if __name__ == "__main__":
