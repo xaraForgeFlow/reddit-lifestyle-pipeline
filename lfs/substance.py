@@ -17,15 +17,14 @@ def lf_substance_smoking(post):
 
 
 def lf_substance_tobacco(post):
-    t = _text(post)
-    if "tobacco" in t:
+    if "tobacco" in _text(post):
         return Pillar.SUBSTANCE
     return ABSTAIN
 
 
 def lf_substance_vaping(post):
     t = _text(post)
-    if "vape" in t or "vaping" in t or "e-cig" in t or "ecig" in t:
+    if any(p in t for p in ["vape", "vaping", "e-cig", "ecig"]):
         return Pillar.SUBSTANCE
     return ABSTAIN
 
@@ -89,7 +88,7 @@ def lf_substance_snus_pouches(post):
 
 
 # =========================================================
-# 3. ALCOHOL SPECIFICS / SLANG / PATTERNS
+# 3. ALCOHOL SPECIFICS / SLANG
 # =========================================================
 
 def lf_substance_alcohol_terms(post):
@@ -175,26 +174,52 @@ def lf_substance_opioids(post):
 # 6. STIMULANTS
 # =========================================================
 
-def lf_substance_stimulants(post):
-    t = _text(post)
-    patterns = [
-        "stimulant",
-        "stimulants",
-        "amphetamine",
-        "adderall",
-        "ritalin",
-        "vyvanse",
-        "cocaine",
-        "meth",
-        "methamphetamine",
+def lf_substance_caffeine(post):
+    t = (post.get("text") or "").lower()
+    keywords = [
+        "coffee", "caffeine", "espresso", "latte",
+        "energy drink", "red bull", "monster"
     ]
-    if any(p in t for p in patterns):
-        return Pillar.SUBSTANCE
-    return ABSTAIN
+    return Pillar.SUBSTANCE if any(k in t for k in keywords) else ABSTAIN
+
+
+def lf_substance_prescription_stimulants(post):
+    t = (post.get("text") or "").lower()
+    keywords = [
+        "adderall", "ritalin", "vyvanse",
+        "concerta", "dexedrine"
+    ]
+    return Pillar.SUBSTANCE if any(k in t for k in keywords) else ABSTAIN
+
+
+# def lf_substance_illicit_stimulants(post):
+#     t = (post.get("text") or "").lower()
+#     keywords = [
+#         "meth", "crystal meth", "amphetamine",
+#         "speed", "cocaine", "coke"
+#     ]
+#     return Pillar.SUBSTANCE if any(k in t for k in keywords) else ABSTAIN
+
+def lf_substance_illicit_stimulants(post):
+    t = (post.get("text") or "").lower()
+
+    keywords = [
+        "meth",
+        "crystal meth",
+        "methamphetamine",
+        "cocaine",
+        "snorting coke",
+        "doing coke",
+        "using coke",
+        "speed (drug)",
+        "amphetamine abuse",
+    ]
+
+    return Pillar.SUBSTANCE if any(k in t for k in keywords) else ABSTAIN
 
 
 # =========================================================
-# 7. OTHER COMMON SUBSTANCES
+# 7. OTHER SUBSTANCES
 # =========================================================
 
 def lf_substance_benzos(post):
@@ -230,7 +255,7 @@ def lf_substance_mdma_psychedelics(post):
 
 
 # =========================================================
-# 8. ADDICTION / DEPENDENCE / WITHDRAWAL / CRAVINGS
+# 8. ADDICTION / DEPENDENCE / RELAPSE
 # =========================================================
 
 def lf_substance_addiction(post):
@@ -261,4 +286,27 @@ def lf_substance_withdrawal(post):
     return ABSTAIN
 
 
-def lf_substance_relapse(post
+def lf_substance_relapse(post):
+    if "relapse" in _text(post):
+        return Pillar.SUBSTANCE
+    return ABSTAIN
+
+
+# =========================================================
+# 9. EXCLUSIONS (VERY IMPORTANT)
+# =========================================================
+
+def lf_substance_medical_exclusion(post):
+    t = _text(post)
+    if "prescribed" in t or "doctor prescribed" in t:
+        return ABSTAIN
+    return ABSTAIN
+
+
+def lf_substance_metaphor_exclusion(post):
+    t = _text(post)
+    if "addicted to this show" in t or "hooked on this game" in t:
+        return ABSTAIN
+    return ABSTAIN
+
+

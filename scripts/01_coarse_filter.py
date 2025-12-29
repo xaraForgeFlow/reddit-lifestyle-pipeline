@@ -1,19 +1,3 @@
-"""
-01_coarse_filter.py
---------------------
-
-High-recall coarse filtering for Reddit submissions.
-
-Logic:
-- Hard subreddit blacklist
-- Hard exclusion keywords
-- Always-keep seed subreddits
-- Graylist + unknown subreddits require lifestyle signal
-
-This stage prioritizes RECALL.
-Precision is handled later by LFs + NLI.
-"""
-
 import json
 from pathlib import Path
 from typing import Iterable
@@ -28,13 +12,19 @@ from config.subreddits import (
     BLACKLIST_SUBREDDITS,
 )
 
+# =========================================================
+# Config
+# =========================================================
+
+INPUT_PATH = Path("data/pilot_raw_posts.json")
+OUTPUT_PATH = Path("data/pilot_filtered_posts.jsonl")
+LOG_EVERY = 50_000
 
 # =========================================================
 # Helpers
 # =========================================================
 
 def contains_any(text: str, keywords: Iterable[str]) -> bool:
-    """Return True if any keyword appears in text."""
     if not text:
         return False
     text = text.lower()
@@ -42,135 +32,69 @@ def contains_any(text: str, keywords: Iterable[str]) -> bool:
 
 
 def normalize_text(post: dict) -> str:
-    """
-    Combine title + selftext if available.
-    Pushshift submissions often store both.
-    """
-    title = post.get("title", "") or ""
-    body = post.get("selftext", "") or post.get("text", "") or ""
-    return f"{title}\n{body}".lower()
-
+    # Script 00 guarantees "text"
+    return (post.get("text") or "").lower()
 
 # =========================================================
 # Core filter
 # =========================================================
 
 def coarse_filter(post: dict) -> bool:
-    """
-    Decide whether to KEEP a post.
-
-    Returns:
-        True  -> keep
-        False -> drop
-    """
     subreddit = (post.get("subreddit") or "").lower()
     text = normalize_text(post)
 
-    # -----------------------------------------------------
+    if not subreddit or not text:
+        return False
+
     # 1. Hard blacklist
-    # -----------------------------------------------------
     if subreddit in BLACKLIST_SUBREDDITS:
         return False
 
     if contains_any(text, COARSE_EXCLUSION_KEYWORDS):
         return False
 
-    # -----------------------------------------------------
     # 2. Always-keep seed subreddits
-    # -----------------------------------------------------
     if subreddit in SEED_WHITELIST:
         return True
 
-    # -----------------------------------------------------
-    # 3. Graylist: require lifestyle signal
-    # -----------------------------------------------------
+    # 3. Graylist
     if subreddit in GRAYLIST_SUBREDDITS:
         return contains_any(text, COARSE_LIFESTYLE_KEYWORDS)
 
-    # -----------------------------------------------------
-    # 4. Unknown subreddits: conservative keep
-    # -----------------------------------------------------
-    # Keep if:
-    # - lifestyle keyword appears
-    # OR
-    # - complaint-like language appears (high recall)
-    return (
-     contains_any(text, COARSE_LIFESTYLE_KEYWORDS)
-     or any(p in text for p in [
-        "i feel",
-        "i am",
-        "i'm",
-        "i have been",
-        "i've been",
-        "struggling",
-        "hard for me",
-        "can't",
-        "cannot",
-        "dealing with",
-        "suffering from",
-     ])
-    )
-
+    # 4. Unknown
+    return contains_any(text, COARSE_LIFESTYLE_KEYWORDS)
 
 # =========================================================
 # Main
 # =========================================================
 
 def main():
-    """
-    Expected input format:
-    - JSON file containing a list of posts
-      OR
-    - JSONL (one post per line)
-
-    Each post should minimally contain:
-    - subreddit
-    - title and/or selftext
-    """
-
-    input_path = Path("data/pilot_raw_posts.json")
-    output_path = Path("data/pilot_filtered_posts.json")
-
-
-    kept = []
+    kept = 0
     total = 0
 
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     print("Starting coarse filtering...")
-    print(f"Input:  {input_path.resolve()}")
-    print(f"Output: {output_path.resolve()}")
+    print(f"Input:  {INPUT_PATH.resolve()}")
+    print(f"Output: {OUTPUT_PATH.resolve()}")
 
-    # -----------------------------------------------------
-    # Load input (JSON or JSONL)
-    # -----------------------------------------------------
-    with input_path.open("r", encoding="utf-8") as f:
-        first_char = f.read(1)
-        f.seek(0)
+    with INPUT_PATH.open("r", encoding="utf-8") as fin, \
+         OUTPUT_PATH.open("w", encoding="utf-8") as fout:
 
-        if first_char == "[":
-            # JSON array
-            posts = json.load(f)
-            iterable = posts
-        else:
-            # JSONL
-            iterable = (json.loads(line) for line in f)
+        posts = json.load(fin)
 
-        for post in iterable:
+        for post in posts:
             total += 1
+
             if coarse_filter(post):
-                kept.append(post)
+                fout.write(json.dumps(post, ensure_ascii=False) + "\n")
+                kept += 1
 
-            if total % 100_000 == 0:
-                print(f"Processed {total:,} posts...")
-
-    # -----------------------------------------------------
-    # Save output
-    # -----------------------------------------------------
-    with output_path.open("w", encoding="utf-8") as f:
-        json.dump(kept, f, ensure_ascii=False)
+            if total % LOG_EVERY == 0:
+                print(f"Processed {total:,} posts — kept {kept:,}")
 
     print("Done.")
-    print(f"Kept {len(kept):,} / {total:,} posts "
-          f"({len(kept) / max(total, 1):.2%})")
+    print(f"Kept {kept:,} / {total:,} posts ({kept / max(total,1):.2%})")
 
 
 if __name__ == "__main__":
