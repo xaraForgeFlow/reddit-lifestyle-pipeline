@@ -1,4 +1,5 @@
 import json
+import random
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -9,12 +10,16 @@ from tqdm import tqdm
 # CONFIG
 # ======================================================
 
-PILOT_N_POSTS = 400_000
+TARGET_N_POSTS = 500_000
 DATASET_NAME = "fddemarco/pushshift-reddit"
 OUTPUT_PATH = Path("data/pilot_raw_posts.json")
 
-MIN_UTC = 1609459200   # 2021-01-01
-MAX_UTC = 1672531200   # 2023-01-01
+# Early window for fast access
+MIN_UTC = 1356998400   # 2013-01-01
+MAX_UTC = 1514764800   # 2018-01-01
+
+RANDOM_SEED = 42
+ACCEPT_PROB = 0.25     # tune if needed (0.2–0.3 is safe)
 
 # ======================================================
 
@@ -45,28 +50,28 @@ def normalize_row(row: Dict) -> Optional[Dict]:
 
 
 def main():
+    random.seed(RANDOM_SEED)
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print("SCRIPT 00 — Load Pushshift Reddit Pilot (STREAMING, CORRECT)")
-    print(f"Dataset     : {DATASET_NAME}")
-    print(f"Pilot size  : {PILOT_N_POSTS}")
-    print(f"Time window : 2021–2023")
-    print(f"Output      : {OUTPUT_PATH}")
+    print("SCRIPT 00 — Fast Pushshift Pilot (Early-window + Random)")
+    print(f"Target posts : {TARGET_N_POSTS}")
+    print(f"Time window  : 2013–2017")
+    print(f"Accept prob  : {ACCEPT_PROB}")
+    print(f"Output       : {OUTPUT_PATH}")
     print("=" * 70)
 
     posts: List[Dict] = []
-    skipped = 0
     seen = 0
+    skipped = 0
 
-    # ✅ THIS is the only correct way for this dataset
     dataset = load_dataset(
         DATASET_NAME,
         split="train",
         streaming=True,
     )
 
-    for row in tqdm(dataset, desc="Streaming posts"):
+    for row in tqdm(dataset, desc="Streaming early Reddit"):
         seen += 1
 
         norm = normalize_row(row)
@@ -74,15 +79,19 @@ def main():
             skipped += 1
             continue
 
+        # random subsampling for diversity
+        if random.random() > ACCEPT_PROB:
+            skipped += 1
+            continue
+
         posts.append(norm)
 
-        if len(posts) >= PILOT_N_POSTS:
+        if len(posts) >= TARGET_N_POSTS:
             break
 
     # -----------------------
     # SAFETY CHECKS
     # -----------------------
-
     assert len(posts) > 0, "❌ No valid posts collected"
     assert all("text" in p for p in posts)
     assert all("subreddit" in p for p in posts)
@@ -90,14 +99,13 @@ def main():
     # -----------------------
     # SAVE OUTPUT
     # -----------------------
-
     with OUTPUT_PATH.open("w", encoding="utf-8") as f:
         json.dump(posts, f, ensure_ascii=False)
 
     print("=" * 70)
     print(f"✅ Saved {len(posts):,} pilot posts")
-    print(f"⏭️  Skipped {skipped:,} invalid rows")
     print(f"👀 Rows scanned: {seen:,}")
+    print(f"⏭️  Skipped     : {skipped:,}")
     print(f"📁 Output → {OUTPUT_PATH.resolve()}")
     print("=" * 70)
 
