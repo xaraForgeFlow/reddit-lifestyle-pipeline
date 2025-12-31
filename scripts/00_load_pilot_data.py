@@ -10,13 +10,21 @@ from tqdm import tqdm
 # PILOT CONFIG
 # ======================================================
 
-PILOT_N_POSTS = 200_000      # safe on streaming
+PILOT_N_POSTS = 400_000      # larger pilot
 RANDOM_SEED = 42
 
 DATASET_NAME = "fddemarco/pushshift-reddit"
 USE_STREAMING = True
 
 OUTPUT_PATH = Path("data/pilot_raw_posts.json")
+
+# ======================================================
+# TIME WINDOW (DIFFERENT FROM PREVIOUS PILOT)
+# ======================================================
+# Newer slice: 2021–2023 (non-overlapping, different discourse)
+
+MIN_UTC = 1609459200   # 2021-01-01
+MAX_UTC = 1672531200   # 2023-01-01
 
 # ======================================================
 
@@ -63,6 +71,7 @@ def main():
     print(f"Dataset     : {DATASET_NAME}")
     print(f"Pilot size  : {PILOT_N_POSTS}")
     print(f"Streaming   : {USE_STREAMING}")
+    print(f"Time window : {MIN_UTC} → {MAX_UTC}")
     print(f"Seed        : {RANDOM_SEED}")
     print("=" * 70)
 
@@ -84,6 +93,11 @@ def main():
     split = next(iter(dataset.values()))
 
     for row in tqdm(split, desc="Collecting pilot posts"):
+        created = row.get("created_utc")
+        if not created or not (MIN_UTC <= created <= MAX_UTC):
+            skipped += 1
+            continue
+
         norm = normalize_row(row)
         if norm is None:
             skipped += 1
