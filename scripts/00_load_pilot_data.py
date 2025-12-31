@@ -20,8 +20,6 @@ MAX_UTC = 1672531200   # 2023-01-01
 
 
 def normalize_row(row: Dict) -> Optional[Dict]:
-    """Normalize Pushshift Reddit submission into pipeline schema."""
-
     text = row.get("selftext")
     if not text:
         return None
@@ -50,7 +48,7 @@ def main():
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print("SCRIPT 00 — Load Pushshift Reddit Pilot (Parquet-based)")
+    print("SCRIPT 00 — Load Pushshift Reddit Pilot (Parquet glob)")
     print(f"Dataset     : {DATASET_NAME}")
     print(f"Pilot size  : {PILOT_N_POSTS}")
     print(f"Time window : 2021–2023")
@@ -58,39 +56,24 @@ def main():
     print("=" * 70)
 
     posts: List[Dict] = []
-    loaded_shards = 0
     skipped = 0
 
-    # Iterate month-by-month to avoid memory blowup
-    for year in range(2021, 2024):
-        for month in range(1, 13):
-            shard = f"RS_{year}-{month:02d}_00.parquet"
+    # 🔑 KEY FIX: use glob, not guessed filenames
+    ds = load_dataset(
+        DATASET_NAME,
+        data_files={"train": "RS_202*.parquet"},
+        split="train",
+    )
 
-            try:
-                ds = load_dataset(
-                    DATASET_NAME,
-                    data_files=shard,
-                    split="train",
-                )
-            except Exception:
-                continue  # shard may not exist
+    print(f"▶ Loaded dataset shard group: {len(ds):,} rows")
 
-            loaded_shards += 1
-            print(f"▶ Loading shard: {shard} ({len(ds):,} rows)")
+    for row in tqdm(ds, desc="Processing parquet rows"):
+        norm = normalize_row(row)
+        if norm is None:
+            skipped += 1
+            continue
 
-            for row in tqdm(ds, desc=f"Processing {shard}", leave=False):
-                norm = normalize_row(row)
-                if norm is None:
-                    skipped += 1
-                    continue
-
-                posts.append(norm)
-
-                if len(posts) >= PILOT_N_POSTS:
-                    break
-
-            if len(posts) >= PILOT_N_POSTS:
-                break
+        posts.append(norm)
 
         if len(posts) >= PILOT_N_POSTS:
             break
@@ -99,10 +82,9 @@ def main():
     # HARD SAFETY CHECKS
     # -----------------------
 
-    assert loaded_shards > 0, "❌ No parquet shards were loaded"
     assert len(posts) > 0, "❌ No valid posts collected"
-    assert all("text" in p for p in posts), "❌ Missing text field"
-    assert all("subreddit" in p for p in posts), "❌ Missing subreddit field"
+    assert all("text" in p for p in posts)
+    assert all("subreddit" in p for p in posts)
 
     # -----------------------
     # SAVE OUTPUT
@@ -115,7 +97,6 @@ def main():
     print(f"✅ Saved {len(posts):,} pilot posts")
     print(f"⏭️  Skipped {skipped:,} invalid rows")
     print(f"📁 Output → {OUTPUT_PATH.resolve()}")
-    print(f"📦 Parquet shards used: {loaded_shards}")
     print("=" * 70)
 
 
