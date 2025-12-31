@@ -48,7 +48,7 @@ def main():
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print("SCRIPT 00 — Load Pushshift Reddit Pilot (Parquet glob)")
+    print("SCRIPT 00 — Load Pushshift Reddit Pilot (STREAMING, CORRECT)")
     print(f"Dataset     : {DATASET_NAME}")
     print(f"Pilot size  : {PILOT_N_POSTS}")
     print(f"Time window : 2021–2023")
@@ -57,17 +57,18 @@ def main():
 
     posts: List[Dict] = []
     skipped = 0
+    seen = 0
 
-    # 🔑 KEY FIX: use glob, not guessed filenames
-    ds = load_dataset(
+    # ✅ THIS is the only correct way for this dataset
+    dataset = load_dataset(
         DATASET_NAME,
-        data_files={"train": "RS_202*.parquet"},
         split="train",
+        streaming=True,
     )
 
-    print(f"▶ Loaded dataset shard group: {len(ds):,} rows")
+    for row in tqdm(dataset, desc="Streaming posts"):
+        seen += 1
 
-    for row in tqdm(ds, desc="Processing parquet rows"):
         norm = normalize_row(row)
         if norm is None:
             skipped += 1
@@ -79,7 +80,7 @@ def main():
             break
 
     # -----------------------
-    # HARD SAFETY CHECKS
+    # SAFETY CHECKS
     # -----------------------
 
     assert len(posts) > 0, "❌ No valid posts collected"
@@ -96,6 +97,7 @@ def main():
     print("=" * 70)
     print(f"✅ Saved {len(posts):,} pilot posts")
     print(f"⏭️  Skipped {skipped:,} invalid rows")
+    print(f"👀 Rows scanned: {seen:,}")
     print(f"📁 Output → {OUTPUT_PATH.resolve()}")
     print("=" * 70)
 
